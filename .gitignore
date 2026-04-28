@@ -1,0 +1,45 @@
+# ========== IDE 和系统文件 ==========
+.idea/
+.gradle/
+*.iml
+*.iws
+*.ipr
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+.apt_generated
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ========== 构建输出 ==========
+build/
+out/
+bin/
+frontend/dist/
+frontend/build/
+
+# ========== 依赖（绝对不能上传） ==========
+node_modules/
+frontend/node_modules/
+
+# ========== 日志和临时文件 ==========
+*.log
+*.tmp
+*.swp
+*.swo
+
+# ========== 环境变量和敏感信息 ==========
+.env
+.env.local
+.env.*.local
+application-local.properties
+application-dev.properties
+
+# ========== Gradle 相关（保留 gradlew 和 gradle/wrapper/） ==========
+# 注意：gradle-wrapper.jar 需要上传，但 .gradle 缓存不用
+gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
