@@ -7,6 +7,7 @@ import {
   createShortUrl,
   deleteUrl,
   editUrl,
+  getUrlStats,
 } from './api/user'
 
 const inputUrl = ref('')
@@ -23,6 +24,7 @@ const page = ref(isLogin.value ? 'main' : 'login') // login/register/main
 const confirmPassword = ref('')
 const captcha = ref('')
 const captchaInput = ref('')
+const statsById = ref({})
 
 function isValidUrl(url) {
   const pattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?$/i
@@ -35,6 +37,57 @@ const normalizeShortUrl = (shortUrl) => {
     return shortUrl
   }
   return `${apiOrigin}/${shortUrl.replace(/^\//, '')}`
+}
+
+const buildLineChart = (daily) => {
+  const width = 240
+  const height = 80
+  if (!daily || daily.length === 0) {
+    return { width, height, path: '', max: 0 }
+  }
+  const max = Math.max(...daily.map(item => item.count), 1)
+  const step = daily.length > 1 ? width / (daily.length - 1) : 0
+  const path = daily
+    .map((item, index) => {
+      const x = index * step
+      const y = height - (item.count / max) * height
+      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
+    })
+    .join(' ')
+  return { width, height, path, max }
+}
+
+const buildPieChart = (regions) => {
+  const total = regions.reduce((sum, item) => sum + item.count, 0)
+  if (!total) {
+    return { style: '', legend: [] }
+  }
+  const colors = ['#ff9f9f', '#ffd479', '#8ed1fc', '#b2f7ef', '#c7ceea', '#f3c4fb']
+  let current = 0
+  const segments = regions.map((item, index) => {
+    const start = current
+    const end = current + (item.count / total) * 100
+    current = end
+    const color = colors[index % colors.length]
+    return { color, start, end, label: item.region, count: item.count }
+  })
+  const style = `conic-gradient(${segments
+    .map(seg => `${seg.color} ${seg.start}% ${seg.end}%`)
+    .join(', ')})`
+  const legend = segments.map(seg => ({
+    color: seg.color,
+    label: seg.label,
+    count: seg.count,
+    percent: Math.round((seg.count / total) * 100),
+  }))
+  return { style, legend }
+}
+
+const formatRegion = (region) => {
+  if (region === 'local') return '局域网'
+  if (region === 'public') return '公网'
+  if (!region || region === 'unknown') return '未知'
+  return region
 }
 
 const fetchMyUrls = async () => {
@@ -108,6 +161,33 @@ const handleEdit = async (id) => {
     await fetchMyUrls()
   } catch (e) {
     errorMsg.value = '编辑失败'
+  }
+}
+
+const toggleStats = async (id) => {
+  const current = statsById.value[id]
+  if (current && current.open) {
+    statsById.value[id] = { ...current, open: false }
+    return
+  }
+  if (current && current.data) {
+    statsById.value[id] = { ...current, open: true }
+    return
+  }
+  statsById.value[id] = { open: true, loading: true, error: '', data: null }
+  try {
+    const res = await getUrlStats(id, token.value, 7)
+    const data = res.data || {}
+    const line = buildLineChart(data.daily || [])
+    const pie = buildPieChart(
+      (data.regions || []).map(item => ({
+        ...item,
+        region: formatRegion(item.region),
+      }))
+    )
+    statsById.value[id] = { open: true, loading: false, error: '', data, line, pie }
+  } catch (e) {
+    statsById.value[id] = { open: true, loading: false, error: '获取统计失败', data: null }
   }
 }
 
@@ -239,6 +319,39 @@ const handleLogout = () => {
           <div style="color: #b469a0; font-size: 13px; margin-top: 2px;">访问次数：{{ item.count }}</div>
           <button @click="() => handleEdit(item.id)" class="btn">编辑</button>
           <button @click="() => handleDelete(item.id)" class="btn">删除</button>
+          <button @click="() => toggleStats(item.id)" class="btn">统计</button>
+          <div v-if="statsById[item.id]?.open" class="stats-panel">
+            <div v-if="statsById[item.id]?.loading" class="stats-loading">统计加载中...</div>
+            <div v-else-if="statsById[item.id]?.error" class="error">{{ statsById[item.id].error }}</div>
+            <div v-else class="stats-content">
+              <div class="stats-summary">
+                <div class="stats-total">总点击：{{ statsById[item.id]?.data?.total || 0 }}</div>
+                <div class="stats-sub">近7天趋势</div>
+                <svg :width="statsById[item.id].line.width" :height="statsById[item.id].line.height" class="line-chart">
+                  <path :d="statsById[item.id].line.path" fill="none" stroke="#b469a0" stroke-width="2" />
+                </svg>
+              </div>
+              <div class="stats-charts">
+                <div class="pie-chart" :style="{ background: statsById[item.id].pie.style || '#f1f1f1' }"></div>
+                <div class="pie-legend">
+                  <div v-for="segment in statsById[item.id].pie.legend" :key="segment.label" class="pie-item">
+                    <span class="pie-dot" :style="{ background: segment.color }"></span>
+                    <span>{{ segment.label }} {{ segment.percent }}% ({{ segment.count }})</span>
+                  </div>
+                  <div v-if="!statsById[item.id].pie.legend.length" class="stats-muted">暂无地域数据</div>
+                </div>
+              </div>
+              <div class="stats-recent">
+                <div class="stats-sub">最近访问</div>
+                <div v-if="!statsById[item.id]?.data?.recent?.length" class="stats-muted">暂无访问记录</div>
+                <div v-for="(row, rIdx) in statsById[item.id]?.data?.recent || []" :key="rIdx" class="stats-row">
+                  <span>{{ row.clickedAt }}</span>
+                  <span>{{ row.ip || 'unknown' }}</span>
+                  <span>{{ formatRegion(row.region) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -374,6 +487,87 @@ const handleLogout = () => {
   margin-bottom: 12px;
   text-align: left;
   border: 1px solid #e0b7d1;
+}
+.stats-panel {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #f3c6de;
+}
+.stats-loading {
+  color: #b469a0;
+  font-size: 13px;
+}
+.stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.stats-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stats-total {
+  font-size: 16px;
+  font-weight: bold;
+  color: #b469a0;
+}
+.stats-sub {
+  font-size: 13px;
+  color: #888;
+}
+.line-chart {
+  background: #f8f2f6;
+  border-radius: 6px;
+  padding: 4px;
+}
+.stats-charts {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pie-chart {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 1px solid #f3c6de;
+}
+.pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #666;
+}
+.pie-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pie-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.stats-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #666;
+}
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stats-muted {
+  color: #aaa;
+  font-size: 12px;
 }
 .form-group {
   display: flex;

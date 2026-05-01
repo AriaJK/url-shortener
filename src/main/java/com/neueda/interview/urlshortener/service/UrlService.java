@@ -64,6 +64,11 @@ public class UrlService {
         return urlEntity;
     }
 
+    public UrlEntity getByShortUrl(String shortUrl) {
+        return urlRepository.findByShortUrl(shortUrl)
+                .orElseThrow(() -> new NoSuchElementException("Url not found"));
+    }
+
     /**
      * Uses the Base62 encoded to convert to Base10 number and fetches the corresponding record from the database
      *

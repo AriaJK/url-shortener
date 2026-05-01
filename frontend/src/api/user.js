@@ -43,3 +43,11 @@ export function editUrl(id, newFullUrl, token) {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+// 获取短链接统计
+export function getUrlStats(id, token, days = 7) {
+  return request.get(`/api/url/${id}/stats`, {
+    params: { days },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
