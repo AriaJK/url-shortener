@@ -1,25 +1,73 @@
 <script setup>
-import { ref } from 'vue'
-import { shortenUrl } from './api/url'
+import { ref, onMounted } from 'vue'
+import {
+  register,
+  login,
+  getMyUrls,
+  createShortUrl,
+  deleteUrl,
+  editUrl,
+} from './api/user'
 
 const inputUrl = ref('')
 const result = ref('')
-const history = ref([]) // 历史记录
+const history = ref([])
 const loading = ref(false)
 const errorMsg = ref('')
+const username = ref('')
+const password = ref('')
+const token = ref(localStorage.getItem('jwt_token') || '')
+const apiOrigin = (import.meta.env.VITE_API_BASE || 'http://localhost:8080').replace(/\/$/, '')
+const isLogin = ref(!!token.value)
+const page = ref(isLogin.value ? 'main' : 'login') // login/register/main
+const confirmPassword = ref('')
+const captcha = ref('')
+const captchaInput = ref('')
 
 function isValidUrl(url) {
-  // 简单URL正则校验
   const pattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?$/i
   return pattern.test(url)
 }
 
-const onVisit = (idx) => {
-  history.value[idx].count++
-  window.open(history.value[idx].shortUrl, '_blank')
+const normalizeShortUrl = (shortUrl) => {
+  if (!shortUrl) return ''
+  if (shortUrl.startsWith('http://') || shortUrl.startsWith('https://')) {
+    return shortUrl
+  }
+  return `${apiOrigin}/${shortUrl.replace(/^\//, '')}`
 }
 
-const handleClick = async () => {
+const fetchMyUrls = async () => {
+  if (!token.value) return
+  try {
+    loading.value = true
+    const res = await getMyUrls(token.value)
+    history.value = res.data.map(item => ({
+      ...item,
+      displayShortUrl: normalizeShortUrl(item.shortUrl),
+      count: 0,
+    }))
+  } catch (e) {
+    errorMsg.value = '获取短链失败，请重新登录'
+  } finally {
+    loading.value = false
+  }
+}
+
+function generateCaptcha() {
+  captcha.value = String(Math.floor(1000 + Math.random() * 9000));
+}
+onMounted(() => {
+  if (isLogin.value) fetchMyUrls()
+  generateCaptcha();
+})
+
+const onVisit = (idx) => {
+  history.value[idx].count++
+  window.open(history.value[idx].displayShortUrl, '_blank')
+}
+
+const handleCreate = async () => {
   errorMsg.value = ''
   result.value = ''
   if (!inputUrl.value) {
@@ -27,98 +75,311 @@ const handleClick = async () => {
     return
   }
   if (!isValidUrl(inputUrl.value)) {
-    errorMsg.value = '请输入有效的URL（如 https://example.com）'
+    errorMsg.value = '请输入有效的URL'
     return
   }
   try {
     loading.value = true
-    const res = await shortenUrl(inputUrl.value)
-    result.value = res.data.shortUrl
-    // 添加到历史记录
-    history.value.unshift({
-      fullUrl: inputUrl.value,
-      shortUrl: res.data.shortUrl,
-      count: 0 // 访问次数
-    })
+    const res = await createShortUrl(inputUrl.value, token.value)
+    result.value = normalizeShortUrl(res.data.shortUrl)
+    await fetchMyUrls()
     window.alert('短链接生成成功！')
   } catch (e) {
-    console.error(e)
-    if (e?.response?.data?.message) {
-      errorMsg.value = e.response.data.message
-    } else {
-      errorMsg.value = '请求失败，可能是无效URL或服务器错误'
-    }
+    errorMsg.value = e?.response?.data?.message || '请求失败，可能是无效URL或服务器错误'
   } finally {
     loading.value = false
   }
 }
+
+const handleDelete = async (id) => {
+  try {
+    await deleteUrl(id, token.value)
+    await fetchMyUrls()
+  } catch (e) {
+    errorMsg.value = '删除失败'
+  }
+}
+
+const handleEdit = async (id) => {
+  const newFullUrl = prompt('请输入新的原始链接')
+  if (!newFullUrl) return
+  try {
+    await editUrl(id, newFullUrl, token.value)
+    await fetchMyUrls()
+  } catch (e) {
+    errorMsg.value = '编辑失败'
+  }
+}
+
+const handleRegister = async () => {
+  if (!username.value || !password.value || !confirmPassword.value) {
+    errorMsg.value = '请输入用户名和两次密码'
+    return
+  }
+  if (password.value !== confirmPassword.value) {
+    errorMsg.value = '两次密码输入不一致'
+    return
+  }
+  if (!captchaInput.value || captchaInput.value !== captcha.value) {
+    errorMsg.value = '验证码错误'
+    generateCaptcha();
+    return
+  }
+  try {
+    await register(username.value, password.value)
+    errorMsg.value = ''
+    page.value = 'login'
+    username.value = ''
+    password.value = ''
+    confirmPassword.value = ''
+    captchaInput.value = ''
+    generateCaptcha();
+    window.alert('注册成功，请登录')
+  } catch (e) {
+    errorMsg.value = e?.response?.data?.message || '注册失败'
+    generateCaptcha();
+  }
+}
+
+const handleLogin = async () => {
+  if (!username.value || !password.value) {
+    errorMsg.value = '请输入用户名和密码'
+    return
+  }
+  try {
+    const res = await login(username.value, password.value)
+    token.value = res.data.token
+    localStorage.setItem('jwt_token', token.value)
+    isLogin.value = true
+    page.value = 'main'
+    errorMsg.value = ''
+    await fetchMyUrls()
+  } catch (e) {
+    errorMsg.value = e?.response?.data?.message || '登录失败'
+  }
+}
+
+const handleLogout = () => {
+  token.value = ''
+  isLogin.value = false
+  localStorage.removeItem('jwt_token')
+  history.value = []
+  page.value = 'login'
+}
 </script>
 
 <template>
-  <div style="padding: 40px; text-align: center;">
-    <h1>短链接系统</h1>
+  <div class="container">
+    <h1 class="main-title">短链接系统</h1>
 
-    <!-- 输入框 -->
-    <input
-      v-model="inputUrl"
-      :disabled="loading"
-      placeholder="请输入长链接，例如 https://google.com"
-      style="width: 300px; padding: 8px; margin-right: 10px;"
-      @keydown.enter="handleClick"
-    />
-
-    <!-- 按钮 -->
-    <button @click="handleClick" :disabled="loading" style="min-width: 100px;">
-      <span v-if="loading">
-        <svg style="width:18px;height:18px;vertical-align:middle;margin-right:5px;animation:spin 1s linear infinite;" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M12,4V1L8,5l4,4V6c3.31,0,6,2.69,6,6c0,3.31-2.69,6-6,6c-3.31,0-6-2.69-6-6H4c0,4.42,3.58,8,8,8s8-3.58,8-8S16.42,4,12,4z" />
-        </svg>
-        生成中...
-      </span>
-      <span v-else>生成短链接</span>
-    </button>
-
-    <!-- 错误提示 -->
-    <div v-if="errorMsg" style="color: red; margin-top: 15px;">{{ errorMsg }}</div>
-
-    <!-- 结果 -->
-    <div v-if="result" style="margin-top: 20px;">
-      <p>短链接：</p>
-      <a :href="result" target="_blank">{{ result }}</a>
+    <div v-if="page === 'login'" class="card card-center card-spaced">
+      <h2>登录</h2>
+      <div class="form-group">
+        <input v-model="username" placeholder="用户名" class="input" />
+        <input v-model="password" type="password" placeholder="密码" class="input" />
+        <div class="captcha-row">
+          <input v-model="captchaInput" maxlength="4" placeholder="验证码" class="input captcha-input" />
+          <span class="captcha-img" @click="generateCaptcha">{{ captcha }}</span>
+        </div>
+      </div>
+      <button @click="handleLogin" class="btn primary btn-block">登录</button>
+      <button @click="() => { page = 'register'; errorMsg = '' }" class="btn btn-block btn-secondary">注册</button>
+      <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     </div>
 
-    <!-- 历史记录 -->
-    <div v-if="history.length" style="margin: 30px auto 0; max-width: 500px;">
-      <h2 style="font-size: 20px; margin-bottom: 10px;">历史记录</h2>
-      <div v-for="(item, idx) in history" :key="item.shortUrl" class="history-card">
-        <div style="word-break: break-all;">
-          <span style="color: #888;">原始链接：</span>{{ item.fullUrl }}
+    <div v-else-if="page === 'register'" class="card card-center card-spaced">
+      <h2>注册</h2>
+      <div class="form-group">
+        <input v-model="username" placeholder="用户名" class="input" />
+        <input v-model="password" type="password" placeholder="密码" class="input" />
+        <input v-model="confirmPassword" type="password" placeholder="确认密码" class="input" />
+        <div class="captcha-row">
+          <input v-model="captchaInput" maxlength="4" placeholder="验证码" class="input captcha-input" />
+          <span class="captcha-img" @click="generateCaptcha">{{ captcha }}</span>
         </div>
-        <div>
-          <span style="color: #888;">短链接：</span>
-          <a :href="item.shortUrl" target="_blank" @click.prevent="onVisit(idx)">{{ item.shortUrl }}</a>
+      </div>
+      <button @click="handleRegister" class="btn primary btn-block">注册</button>
+      <button @click="() => { page = 'login'; errorMsg = '' }" class="btn btn-block btn-secondary">返回登录</button>
+      <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
+    </div>
+
+    <div v-else-if="page === 'main'">
+      <div class="top-bar">
+        <span style="font-size: 16px; color: #b469a0;">欢迎，{{ username }}</span>
+        <button @click="handleLogout" class="btn">退出登录</button>
+      </div>
+      <div class="card">
+        <input
+          v-model="inputUrl"
+          :disabled="loading"
+          placeholder="请输入长链接，例如 https://google.com"
+          class="input"
+          style="width: 320px; margin-bottom: 10px;"
+        />
+        <button @click="handleCreate" :disabled="loading" class="btn primary" style="min-width: 120px;">
+          <span v-if="loading">生成中...</span>
+          <span v-else>生成短链接</span>
+        </button>
+        <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
+        <div v-if="result" class="result">
+          <p>短链接：</p>
+          <a :href="result" target="_blank">{{ result }}</a>
         </div>
-        <div style="color: #b469a0; font-size: 13px; margin-top: 2px;">访问次数：{{ item.count }}</div>
+      </div>
+      <div v-if="history.length" class="card" style="margin-top: 30px;">
+        <h2 style="font-size: 20px; margin-bottom: 10px;">我的短链接</h2>
+        <div v-for="(item, idx) in history" :key="item.id" class="history-card">
+          <div style="word-break: break-all;">
+            <span style="color: #888;">原始链接：</span>{{ item.fullUrl }}
+          </div>
+          <div>
+            <span style="color: #888;">短链接：</span>
+            <a :href="item.displayShortUrl" target="_blank" @click.prevent="onVisit(idx)">{{ item.displayShortUrl }}</a>
+          </div>
+          <div style="color: #b469a0; font-size: 13px; margin-top: 2px;">访问次数：{{ item.count }}</div>
+          <button @click="() => handleEdit(item.id)" class="btn">编辑</button>
+          <button @click="() => handleDelete(item.id)" class="btn">删除</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style>
-body {
+.container {
+  min-height: 100vh;
+  width: 100vw;
   background: #ffe4ef;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
-.history-card {
+.card-center {
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.card-spaced {
+  margin-top: 40px;
+  margin-bottom: 40px;
+  padding-top: 24px !important;
+  padding-bottom: 24px !important;
+}
+.captcha-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+  gap: 10px;
+}
+.captcha-input {
+  width: 120px;
+}
+.captcha-img {
+  display: inline-block;
+  background: #f3c6de;
+  color: #b469a0;
+  font-weight: bold;
+  font-size: 18px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid #e0b7d1;
+  transition: background 0.2s;
+}
+.captcha-img:hover {
+  background: #e0b7d1;
+}
+.main-title {
+  font-size: 48px;
+  font-weight: bold;
+  margin-bottom: 32px;
+  letter-spacing: 4px;
+}
+.card {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(180,105,160,0.08);
-  padding: 16px 18px;
-  margin-bottom: 14px;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(180,105,160,0.10);
+  padding: 28px 32px 24px 32px;
+  margin: 0 auto 18px auto;
+  max-width: 420px;
   text-align: left;
   border: 1px solid #f3c6de;
 }
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.input {
+  display: block;
+  width: 90%;
+  margin: 0 auto 14px auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #e0b7d1;
+  font-size: 16px;
+}
+.btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: none;
+  background: #f3c6de;
+  color: #333;
+  font-size: 15px;
+  margin-right: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn.primary {
+  background: #b469a0;
+  color: #fff;
+}
+.btn:hover {
+  background: #e0b7d1;
+}
+.btn.primary:hover {
+  background: #a05a8c;
+}
+.btn-block {
+  width: 100%;
+  margin-right: 0;
+  margin-bottom: 10px;
+}
+.btn-secondary {
+  background: #f3c6de;
+  color: #333;
+}
+.btn-block + .btn-block {
+  margin-top: 6px;
+}
+.error {
+  color: #e74c3c;
+  margin-top: 10px;
+  font-size: 15px;
+}
+.result {
+  margin-top: 18px;
+  font-size: 16px;
+}
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 420px;
+  margin: 0 auto 18px auto;
+}
+.history-card {
+  background: #f9f6fb;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(180,105,160,0.06);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  text-align: left;
+  border: 1px solid #e0b7d1;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  align-items: center;
 }
 </style>

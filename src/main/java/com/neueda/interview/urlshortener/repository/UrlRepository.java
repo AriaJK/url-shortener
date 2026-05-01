@@ -6,10 +6,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
+
+import com.neueda.interview.urlshortener.model.User;
 
 @Repository
 public interface UrlRepository extends JpaRepository<UrlEntity, Long> {
 
-    @Query("SELECT u FROM url u WHERE u.fullUrl = ?1")
+    @Query("SELECT u FROM UrlEntity u WHERE u.fullUrl = ?1")
     List<UrlEntity> findUrlByFullUrl(String fullUrl);
+
+    Optional<UrlEntity> findByShortUrl(String shortUrl);
+
+    List<UrlEntity> findByUser(User user);
 }

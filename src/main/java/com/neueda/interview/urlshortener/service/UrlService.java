@@ -11,6 +11,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.NoSuchElementException;
+
+import com.neueda.interview.urlshortener.model.User;
 
 @Service
 public class UrlService {
@@ -18,6 +21,37 @@ public class UrlService {
     Logger logger = LoggerFactory.getLogger(UrlService.class);
 
     private final UrlRepository urlRepository;
+
+    // 用户相关方法
+    public List<UrlEntity> findByUser(User user) {
+        return urlRepository.findByUser(user);
+    }
+
+    public UrlEntity createShortUrl(String fullUrl, String customSuffix, User user) {
+        UrlEntity urlEntity = new UrlEntity();
+        urlEntity.setFullUrl(fullUrl);
+        urlEntity.setUser(user);
+        if (customSuffix != null && !customSuffix.isEmpty()) {
+            urlEntity.setShortUrl(customSuffix);
+        }
+        UrlEntity saved = urlRepository.save(urlEntity);
+        if (customSuffix == null || customSuffix.isEmpty()) {
+            String shortUrlText = ShorteningUtil.idToStr(saved.getId());
+            saved.setShortUrl(shortUrlText);
+            saved = urlRepository.save(saved);
+        }
+        return saved;
+    }
+
+    public void deleteUrl(Long id) {
+        urlRepository.deleteById(id);
+    }
+
+    public UrlEntity editUrl(Long id, String newFullUrl) {
+        UrlEntity urlEntity = urlRepository.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
+        urlEntity.setFullUrl(newFullUrl);
+        return urlRepository.save(urlEntity);
+    }
 
     @Autowired
     public UrlService(UrlRepository urlRepository) {
@@ -37,12 +71,10 @@ public class UrlService {
      * @return FullUrl object
      */
     public FullUrl getFullUrl(String shortenString) {
-        logger.debug("Converting Base 62 string %s to Base 10 id");
-        Long id = ShorteningUtil.strToId(shortenString);
-        logger.info(String.format("Converted Base 62 string %s to Base 10 id %s", shortenString, id));
-
-        logger.info(String.format("Retrieving full url for %d", id));
-        return new FullUrl(this.get(id).getFullUrl());
+        logger.info(String.format("Retrieving full url for %s", shortenString));
+        UrlEntity urlEntity = urlRepository.findByShortUrl(shortenString)
+                .orElseThrow(() -> new NoSuchElementException("Url not found"));
+        return new FullUrl(urlEntity.getFullUrl());
     }
 
     private UrlEntity save(FullUrl fullUrl) {
