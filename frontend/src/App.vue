@@ -110,6 +110,7 @@ const fetchMyUrls = async () => {
 function generateCaptcha() {
   captcha.value = String(Math.floor(1000 + Math.random() * 9000));
 }
+
 onMounted(() => {
   if (isLogin.value) fetchMyUrls()
   generateCaptcha();

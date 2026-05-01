@@ -7,6 +7,7 @@ import com.neueda.interview.urlshortener.model.User;
 import com.neueda.interview.urlshortener.repository.UserRepository;
 import com.neueda.interview.urlshortener.repository.UrlRepository;
 import com.neueda.interview.urlshortener.service.UrlClickService;
+import com.neueda.interview.urlshortener.service.UrlSafetyService;
 import com.neueda.interview.urlshortener.service.UrlService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +29,8 @@ public class UserUrlController {
     private UrlRepository urlRepository;
     @Autowired
     private UrlClickService urlClickService;
+    @Autowired
+    private UrlSafetyService urlSafetyService;
 
     @GetMapping("/my")
     public List<UrlView> getMyUrls() {
@@ -41,6 +44,7 @@ public class UserUrlController {
     public UrlView createUrl(@RequestParam String fullUrl, @RequestParam(required = false) String customSuffix) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByUsername(username).orElseThrow(() -> new RuntimeException("User not found"));
+        urlSafetyService.assertSafe(fullUrl);
         UrlEntity created = urlService.createShortUrl(fullUrl, customSuffix, user);
         return toView(created);
     }

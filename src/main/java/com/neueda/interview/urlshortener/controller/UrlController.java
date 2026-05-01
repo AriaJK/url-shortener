@@ -4,6 +4,7 @@ import com.neueda.interview.urlshortener.common.UrlUtil;
 import com.neueda.interview.urlshortener.dto.ShortUrl;
 import com.neueda.interview.urlshortener.error.InvalidUrlError;
 import com.neueda.interview.urlshortener.dto.FullUrl;
+import com.neueda.interview.urlshortener.service.UrlSafetyService;
 import com.neueda.interview.urlshortener.service.UrlService;
 import org.apache.commons.validator.routines.UrlValidator;
 import org.slf4j.ILoggerFactory;
@@ -28,11 +29,13 @@ public class UrlController {
 
     protected final UrlService urlService;
     protected final com.neueda.interview.urlshortener.service.UrlClickService urlClickService;
+    protected final UrlSafetyService urlSafetyService;
 
     @Autowired
-    public UrlController(UrlService urlService, com.neueda.interview.urlshortener.service.UrlClickService urlClickService) {
+    public UrlController(UrlService urlService, com.neueda.interview.urlshortener.service.UrlClickService urlClickService, UrlSafetyService urlSafetyService) {
         this.urlService = urlService;
         this.urlClickService = urlClickService;
+        this.urlSafetyService = urlSafetyService;
     }
 
     /**
@@ -56,6 +59,8 @@ public class UrlController {
             // returns a custom body with error message and bad request status code
             return ResponseEntity.badRequest().body(error);
         }
+
+        urlSafetyService.assertSafe(url);
         String baseUrl = null;
 
         try {
