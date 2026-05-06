@@ -30,7 +30,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .csrf().disable()
             .authorizeRequests()
             .antMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-            .antMatchers("/api/auth/**", "/api/shorten/**", "/{shortCode}").permitAll()
+            .antMatchers("/api/auth/**", "/api/shorten/**", "/shorten", "/actuator/health", "/{shortCode}").permitAll()
             .anyRequest().authenticated()
             .and()
             .sessionManagement()

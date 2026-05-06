@@ -1,4 +1,4 @@
-version: "3"
+version: "3.8"
 services:
   api-server:
     container_name: urlshortener-springboot
@@ -7,12 +7,17 @@ services:
       dockerfile: api.Dockerfile
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysqlurldb:3306/urldb
+      - SPRING_DATASOURCE_USERNAME=urlshortener
+      - SPRING_DATASOURCE_PASSWORD=123456
+      - SAFEBROWSING_ENABLED=true
+      - SAFEBROWSING_APIKEY=AIzaSyB-HjgFzXpz9hyinJSS98u2iru6NfrAi7E
     ports:
-      - "8080:8080"
+      - "18080:8080"
     networks:
       - urlshortener-mysql-network
     depends_on:
-      - api-db
+      api-db:
+        condition: service_healthy
 
   api-db:
     container_name: mysqlurldb
@@ -22,12 +27,23 @@ services:
     networks:
       - urlshortener-mysql-network
     environment:
-      - MYSQL_ROOT_PASSWORD=pa55w0rd
+      - MYSQL_ROOT_PASSWORD=gg20050105
       - MYSQL_DATABASE=urldb
       - MYSQL_USER=urlshortener
       - MYSQL_PASSWORD=123456
     ports:
-      - '3306:3306'
+      - "13306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 networks:
   urlshortener-mysql-network:
+
+volumes:
+  mysql_data:

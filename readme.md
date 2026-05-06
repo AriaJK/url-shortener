@@ -1,132 +1,223 @@
-# URL Shortener
+# URL Shortener（短链服务）
 
-Spring Boot based REST API that takes a URL and returns a shortened URL and uses MySQL to persist data.
+一个基于 Spring Boot 的短链服务，接收长链接并返回短链接，数据存储在 MySQL 中。
 
-# Getting Started
+# 项目概览
 
-## Dependencies
+## 技术栈
 
-This project depends on 
-* spring-boot-starter-web (Spring boot framework)
-* spring-boot-starter-data-jpa (for data persistence)
-* spring-boot-starter-actuator (for API statistics)
-* commons-validator:1.6 (for URL validation)
-* h2 (for tests)
-* spring-boot-starter-test (for testss)
+- 后端：Java 8 + Spring Boot 2.2.x
+- 数据访问：Spring Data JPA + Hibernate
+- 数据库：MySQL 8
+- 安全：Spring Security + JWT 过滤器
+- 监控：Spring Boot Actuator
+- 其他：Apache Commons Validator（URL 校验）
+- 构建：Gradle
+- 部署：Docker / Docker Compose
 
-## Project Build 
+## 架构与流程
 
-To build this project, run
+- API 服务负责短链生成、跳转、统计记录
+- MySQL 负责持久化存储
+- Docker Compose 将 API 与 MySQL 通过自定义网络连接
+- API 启动依赖 DB 健康检查通过后再启动
 
-```shell script
-git clone https://github.com/zeeshaanahmad/url-shortener.git
-cd url-shortener
-gradle clean build
+## 已实现功能
+
+- 生成短链（POST /shorten）
+- 短链跳转（GET /{shortCode}）
+- URL 合法性校验
+- Google Safe Browsing 安全检测（可开关）
+- 健康检查（GET /actuator/health）
+- MySQL 数据持久化（容器卷）
+
+# 快速开始（Docker）
+
+## 前置条件
+
+- 已安装并启动 Docker Desktop
+
+## 构建与启动
+
+1. 构建 jar（API 镜像会拷贝 jar）
+
+```shell
+./gradlew clean build
 ```
 
-## Deployment
+2. 启动容器
 
-Project build can be deployed using docker-compose.yml which sets up two containers for
-* MySql
-* REST API
-
-To deploy the project, run
-
-```shell script
-docker-compose up --build
+```shell
+docker-compose up -d
 ```
 
-**The application will be accessible on http://localhost:8080**
+3. 健康检查
 
-### db.Dockerfile
-`db.Dockerfile` builds the docker image for MySql using MySql version 8 as the base image. It uses `schema.sql` at startup to set up the database schema.
+```shell
+curl http://localhost:18080/actuator/health
+```
 
-### api.Dockerfile
-`api.Dockerfile` sets up an image to deploy the project's jar file generated above from `build/libs/url-shortener-0.0.1-SNAPSHOT.jar`. It exposes the API on port `8080`
+返回 `{"status":"UP"}` 表示 API 正常运行。
 
-### docker-compose.yml
-Provides the configuration for containers to host API and MySql. It sets up two services; `api-server` and `api-db` with container names `urlshortener-springboot` and `mysqlurldb` respectively. 
-The datasource url is being set in the `api-server` configuration so that it points to the MySql container.
-Both `api-server` and `api-db` are linked together through the `urlshortener-mysql-network` docker network. The network enables both the containers to communicate together.
+## 端口说明
 
-## API Endpoints
+- API：宿主机 `18080` -> 容器 `8080`
+- MySQL：宿主机 `13306` -> 容器 `3306`
 
-You can access following API endpoints at http://localhost:8080
+# API 使用说明
 
-### POST `/shorten`
-It takes a JSON object in the following format as payload
+Base URL（Docker）：`http://localhost:18080`
+
+## POST /shorten
+
+请求体：
 
 ```json
 {
-  "fullUrl":"<The URL to be shortened>"
+  "fullUrl": "https://example.com/example/1"
 }
 ```
 
-#### cURL
+PowerShell 示例：
 
-```shell script
-curl -X POST \
-  http://localhost:8080/shorten \
-  -H 'Content-Type: application/json' \
-  -d '{"fullUrl":"https://example.com/example/1"}'
+```powershell
+Invoke-RestMethod -Method Post http://localhost:18080/shorten `
+  -ContentType "application/json" `
+  -Body '{"fullUrl":"https://example.com/example/1"}'
 ```
 
-Response:
+响应示例：
 
 ```json
 {
-  "shortUrl": "<shortened url for the fullUrl provided in the request payload>"
+  "shortUrl": "http://localhost:18080/og"
 }
 ```
 
-Please note that API works only with valid HTTP or HTTPS Urls. In case of malformed Url, it returns `400 Bad Request` error with response body containing a JSON object in the following format
+## GET /{shortCode}
 
-```json
-{
-  "field":"fullUrl",
-  "value":"<Malformed Url provided in the request>",
-  "message":"<Exception message>"
-}
+直接访问返回的短链地址，会重定向到原始 URL。
+
+## GET /actuator/health
+
+```shell
+curl http://localhost:18080/actuator/health
 ```
 
-### GET `/<shortened_text>`
+# 配置说明
 
-This endpoint redirects to the corresponding fullUrl.
+## Safe Browsing
 
-### GET `/actuator/health`
+通过环境变量控制：
 
-Included the spring boot actuator dependency for API metrics. You can try this endpoint for health checks.
+- `SAFEBROWSING_APIKEY`：Google Safe Browsing API Key
+- `SAFEBROWSING_ENABLED=true|false`
 
-#### cURL
+如需关闭检测，设置：
 
-```shell script
-curl -X GET   http://localhost:8080/actuator/health
+```
+SAFEBROWSING_ENABLED=false
 ```
 
-## Undeploy
+# Docker 文件说明
 
-To undeploy the containers, run
+- `api.Dockerfile`：API 镜像，拷贝 `build/libs/url-shortener-0.0.1-SNAPSHOT.jar`
+- `db.Dockerfile`：MySQL 镜像，加载 `schema.sql`
+- `docker-compose.yml`：编排 API + MySQL，包含网络、端口与健康检查
 
-```shell script
+# 本地启动（非 Docker）
+
+> 适合本地开发。
+
+## 前置条件
+
+- JDK 8
+- MySQL 8
+- Gradle（或使用项目内置的 `gradlew`）
+
+## 创建数据库并导入 schema
+
+1. 在本地 MySQL 创建数据库与用户：
+
+```sql
+CREATE DATABASE urldb DEFAULT CHARACTER SET utf8mb4;
+CREATE USER 'urlshortener'@'%' IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON urldb.* TO 'urlshortener'@'%';
+FLUSH PRIVILEGES;
+```
+
+2. 导入表结构：
+
+```shell
+mysql -u urlshortener -p urldb < schema.sql
+```
+
+## 配置本地 application.properties
+
+编辑 [src/main/resources/application.properties](src/main/resources/application.properties) 并设置：
+
+```properties
+spring.datasource.url=jdbc:mysql://localhost:3306/urldb?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+spring.datasource.username=urlshortener
+spring.datasource.password=123456
+safebrowsing.enabled=true
+safebrowsing.apiKey=${SAFEBROWSING_APIKEY}
+```
+
+> 如果不想启用 Safe Browsing，可将 `safebrowsing.enabled=false`。
+
+## 设置环境变量
+
+Windows PowerShell：
+
+```powershell
+$env:SAFEBROWSING_APIKEY="你的真实 API Key"
+```
+
+## 启动服务
+
+```shell
+./gradlew bootRun
+```
+
+启动后访问：
+
+- `http://localhost:8080/actuator/health`
+- `POST http://localhost:8080/shorten`
+
+## 本地测试示例
+
+```powershell
+Invoke-RestMethod -Method Post http://localhost:8080/shorten `
+  -ContentType "application/json" `
+  -Body '{"fullUrl":"https://example.com/example/1"}'
+```
+
+# 常见问题
+
+## 403（/actuator/health）
+
+需要在安全配置白名单中允许 `/actuator/health`，当前已放行。
+
+## 404（浏览器直接打开 /shorten）
+
+`/shorten` 是 POST 接口，不能直接在浏览器打开。
+
+## 端口占用
+
+- `8080` 被占用时使用 `18080:8080`
+- `3306` 被占用时使用 `13306:3306`
+
+# 停止服务
+
+```shell
 docker-compose down
 ```
 
-# Url Shortening Algorithm
+# 短链算法说明
 
-I thought of two approaches
-1. Generating hashes for the fullUrl and storing them as key value pairs in redis cache or in mysql database
-2. Performing a Base62 conversion from Base10 on the id of stored fullUrl
-
-Tested both of the approaches but in case of hashes, sometimes the hashes were longer than actual URL. Another issue was the readability and ease of remembering. So, I went with the second approach. With the Base conversion approach, even the maximum value of Long produces 10 characters which is still somewhat easy to remember. 
-> There is a dependency from Google named Guava that could be used here to generate hashes. Although murmur_3_32 hash implemented in Guava was generating up to 10 characters long string, I left it for future testing and evaluation.
-
-# Future Enhancements / Known Issues
-* Since the project is for demo purpose only, Passwords are in plaintext. Will consider using Jasypt to encrypt the password in future
-* Haven't implemented Front-end application yet
-* Faced issues with auto schema generation through JPA, so delegated the schema creation to Docker container
-* Faced issues with api container not being able to get connection while mysql container was being set up, so added `?autoReconnect=true&failOverReadOnly=false&maxReconnects=10&useSSL=false` to datasource url in application.properties. It slows down the application startup. You may remove that part if you want.
-* Implement https
-* Mount volumes for MySql container to persist data outside of the container
+采用 Base62 编码数据库自增 ID，生成短字符串，较哈希方式更短且更易记。
 
 # Contributors
+
 email: ahmad.zeeshaan@gmail.com

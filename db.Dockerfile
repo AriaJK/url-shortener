@@ -1,9 +1,9 @@
 FROM mysql:8
-MAINTAINER ahmad.zeeshaan@gmail.com
+LABEL maintainer="ahmad.zeeshaan@gmail.com"
 
 ENV MYSQL_DATABASE=urldb \
-    MYSQL_ROOT_PASSWORD=pa55w0rd
+    MYSQL_ROOT_PASSWORD=gg20050105
 
-ADD schema.sql /docker-entrypoint-initdb.d
+COPY schema.sql /docker-entrypoint-initdb.d
 
 EXPOSE 3306
