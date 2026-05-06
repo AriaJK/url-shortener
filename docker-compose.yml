@@ -10,7 +10,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=urlshortener
       - SPRING_DATASOURCE_PASSWORD=123456
       - SAFEBROWSING_ENABLED=true
-      - SAFEBROWSING_APIKEY=AIzaSyB-HjgFzXpz9hyinJSS98u2iru6NfrAi7E
+      - SAFEBROWSING_APIKEY=${SAFEBROWSING_APIKEY}
     ports:
       - "18080:8080"
     networks:
