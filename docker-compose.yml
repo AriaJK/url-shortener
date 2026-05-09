@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: api.Dockerfile
+    env_file:
+      - .env
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysqlurldb:3306/urldb
       - SPRING_DATASOURCE_USERNAME=urlshortener

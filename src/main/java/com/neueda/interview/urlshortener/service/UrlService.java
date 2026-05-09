@@ -114,6 +114,11 @@ public class UrlService {
         String shortUrlText = ShorteningUtil.idToStr(savedUrl.getId());
         logger.info(String.format("Converted Base 10 %d to Base 62 string %s", savedUrl.getId(), shortUrlText));
 
+        if (savedUrl.getShortUrl() == null || savedUrl.getShortUrl().isEmpty()) {
+            savedUrl.setShortUrl(shortUrlText);
+            urlRepository.save(savedUrl);
+        }
+
         return new ShortUrl(shortUrlText);
     }
 
