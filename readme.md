@@ -1,5 +1,7 @@
 # URL Shortener（短链服务）
 
+> 📌 **项目说明**：本项目是基于短链接开源项目的学习实践版本。本人主要负责代码理解、功能修复（短链跳转404、持久化存储）、Docker 部署配置及安全白名单设置。项目仅用于学习交流。
+
 一个基于 Spring Boot 的短链服务，接收长链接并返回短链接，数据存储在 MySQL 中。
 
 # 项目概览
@@ -218,6 +220,8 @@ docker-compose down
 
 采用 Base62 编码数据库自增 ID，生成短字符串，较哈希方式更短且更易记。
 
-# Contributors
+## 🖼️ 界面预览
+<img width="1172" height="893" alt="image" src="https://github.com/user-attachments/assets/3da9badf-196b-4b1e-8681-2b7ed0e66657" />
+<img width="730" height="720" alt="image" src="https://github.com/user-attachments/assets/9618f3d1-da39-475a-9a7f-dc236baf82c9" />
 
-email: ahmad.zeeshaan@gmail.com
+
